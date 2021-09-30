@@ -31,15 +31,15 @@ app.use(helmet());
 
 //initialize morgan for server logging
 // create a write stream that rotates each day and when 10mb of data then compresses the rotated files
-const serverLogStream =rfs.createStream("morganLogs.log",{
-    size: "10M", // rotate every 10 MegaBytes written
-    interval: "1d", // rotate daily
-    compress: "gzip", // compress rotated files
-    path: path.join(__dirname, 'logs')
+////const serverLogStream =rfs.createStream("morganLogs.log",{
+    //size: "10M", // rotate every 10 MegaBytes written
+    //interval: "1d", // rotate daily
+    //compress: "gzip", // compress rotated files
+    //path: path.join(__dirname, 'logs')
     
-  });
+  //});
 
- app.use(morgan(':date[web] :status :method :url :remote-addr :remote-user :total-time :user-agent',{stream:serverLogStream}));
+ //app.use(morgan(':date[web] :status :method :url :remote-addr :remote-user :total-time :user-agent',{stream:serverLogStream}));
 
 const PORT =process.env.PORT || 5000
 
