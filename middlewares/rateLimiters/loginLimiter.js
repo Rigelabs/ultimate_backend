@@ -47,8 +47,8 @@ const limiterSlowBruteByIP = new RateLimiterRedis({
     storeClient: redisRateLimiterClient,
     keyPrefix: 'login_fail_consecutive_username_and_ip',
     points: maxConsecutiveFailsByUsernameAndIP,
-    duration: 60 * 60 * 24 * 90, // Store number for 90 days since first fail
-    blockDuration: 60 * 60 * 24 * 365 * 20, // Block for infinity after consecutive fails
+    duration: 60, // Store number for 90 days since first fail
+    blockDuration: 60, // Block for 1 minute after consecutive fails
     inmemoryBlockOnConsumed: 200, // If 200 points consumed
     inmemoryBlockDuration: 30, // block for 30 seconds
     insuranceLimiter: new RateLimiterMemory(
@@ -61,9 +61,9 @@ const getUsernameIpKey =(username, ip)=> `${username}_${ip}`;
 
 async function loginLimiter(req,res,next){
     const ipAddr = req.connection.remoteAddress;
- console.log(ipAddr)
+ 
     const usernameIPKey = getUsernameIpKey(req.body.contact, ipAddr);
-    
+    console.log(usernameIPKey)
     const [resUsernameAndIP,resSlowByIP]= await Promise.all([
         limiterConsecutiveFailsByUsernameAndIP.get(usernameIPKey),
         limiterSlowBruteByIP.get(ipAddr)
@@ -74,6 +74,7 @@ async function loginLimiter(req,res,next){
     if(resSlowByIP !== null && resSlowByIP.consumedPoints > maxWrongAttemptsByIPperDay){
         retrySecs = Math.round(resSlowByIP.msBeforeNext / 1000) || 1;
     }
+    
     if(retrySecs >0){
        logger.error("Could have choked, Too many requests",usernameIPKey)
         res.status(429).json({message:"Could have choked, Too many requests"});

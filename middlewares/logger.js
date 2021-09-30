@@ -34,7 +34,7 @@ module.exports = createLogger({
                 )
     }),
     new SlackHook({
-        webhookUrl:"https://hooks.slack.com/services/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"
+        webhookUrl:process.env.SLACK_WEBHOOK_URI
     })
     ]
 })
