@@ -32,7 +32,7 @@ const limiterSlowBruteByIP = new RateLimiterRedis({
     storeClient: redisRateLimiterClient,
     keyPrefix: 'login_fail_ip_per_day',
     points: maxWrongAttemptsByIPperDay,
-    duration: 60,
+    duration: 60*10,
     blockDuration: 60 * 60 * 24, // Block for 1 day, if 100 wrong attempts per day
     inmemoryBlockOnConsumed: 100, // If 100 points consumed
     inmemoryBlockDuration: 30, // block for 30 seconds
@@ -47,15 +47,15 @@ const limiterSlowBruteByIP = new RateLimiterRedis({
     storeClient: redisRateLimiterClient,
     keyPrefix: 'login_fail_consecutive_username_and_ip',
     points: maxConsecutiveFailsByUsernameAndIP,
-    duration: 60, // Store number for 90 days since first fail
-    blockDuration: 60, // Block for 1 minute after consecutive fails
+    duration: 60*10, // Store number for 10mins since first fail
+    blockDuration: 60*2, // Block for 1 minute after consecutive fails
     inmemoryBlockOnConsumed: 200, // If 200 points consumed
     inmemoryBlockDuration: 30, // block for 30 seconds
-    insuranceLimiter: new RateLimiterMemory(
-        {
-          points: 20, // 20 is fair if you have 5 workers and 1 cluster
-          duration: 1,
-        }),
+    //insuranceLimiter: new RateLimiterMemory(
+       // {
+       //   points: 20, // 20 is fair if you have 5 workers and 1 cluster
+       //   duration: 1,
+       // }),
   });
 const getUsernameIpKey =(username, ip)=> `${username}_${ip}`;
 
@@ -63,7 +63,7 @@ async function loginLimiter(req,res,next){
     const ipAddr = req.connection.remoteAddress;
  
     const usernameIPKey = getUsernameIpKey(req.body.contact, ipAddr);
-    console.log(usernameIPKey)
+    
     const [resUsernameAndIP,resSlowByIP]= await Promise.all([
         limiterConsecutiveFailsByUsernameAndIP.get(usernameIPKey),
         limiterSlowBruteByIP.get(ipAddr)
@@ -74,10 +74,10 @@ async function loginLimiter(req,res,next){
     if(resSlowByIP !== null && resSlowByIP.consumedPoints > maxWrongAttemptsByIPperDay){
         retrySecs = Math.round(resSlowByIP.msBeforeNext / 1000) || 1;
     }
-    
+    console.log(resSlowByIP)
     if(retrySecs >0){
-       logger.error("Could have choked, Too many requests",usernameIPKey)
-        res.status(429).json({message:"Could have choked, Too many requests"});
+       logger.error("I am Choking, too many requests",usernameIPKey)
+        res.status(429).json({message:"I am Choking, too many requests"});
     }else{
         let user = null;
         let validpass=null;
