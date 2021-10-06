@@ -4,38 +4,46 @@ const redisClient = require('../middlewares/redis');
 
 module.exports ={
     ensureAuth: function(req,res,next){
-        const authHeader= req.headers.authorization.split(' ')[1]
+      
+        const authHeader= req.headers['authorization'];
         try {
             if (authHeader){
-                const token = authHeader;
-                //console.log(token)
+                const bearer=authHeader.split(' ');
+                const token = bearer[1];
+                
                 const user = jwt.verify(token, process.env.TOKEN_SECRET) 
+               
                 req.user =user;
+              
                 if(user){
                      next();
                 }
             }else{
-                res.status(401).json({messgae:"Invalid Request"})
+                logger.error(`Invalid request ${req.originalUrl} - ${req.method} - ${req.ip}`);
+               return res.status(403).json({message:"Invalid Request"})
             }
         } catch (error) {
-            if (error==='TokenExpiredError') {
-                return res.status(401).send({ message: "Unauthorized! Access Token was expired !" });
+            if (error.name==='TokenExpiredError') {
+                return res.status(401).send({ message: "Unauthorized! You need to Login Again !" });
             
             }return res.status(401).json({message: error.name})
         }
         
     }, 
     verifyRefreshToken: function(req,res,next){
+      
         const refreshToken= req.body.refreshToken
+        console.log(refreshToken)
         try {
             if (refreshToken){
-                const token = refreshToken;
-                //console.log(token)
-                const user = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET) 
+            
+                const user = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET) 
                 req.user =user;
+                const user_id=req.user.data
+                
                 if(user){
                     //verify if refreshtoken is on redis store
-                    redisClient.get(user.sub.toString(), (err,data)=>{
+                    redisClient.get(user_id, (err,data)=>{
                         if(err){ logger.error(err); throw err};
                         if(data ===null) return  res.status(401).json({message:"Invalid Request"});
                         if(JSON.parse(data).token != refreshToken) return  res.status(401).json({message:"Invalid Request"});
@@ -44,13 +52,13 @@ module.exports ={
                      next();
                 }
             }else{
-                res.status(401).json({messgae:"Invalid Request"})
+               return res.status(400).json({messgae:"Invalid Request"})
             }
         } catch (error) {
-            if (error==='TokenExpiredError') {
-                return res.status(401).send({ message: "Unauthorized! Access Token was expired !" });
+            if (error.name==='TokenExpiredError') {
+                return res.status(401).send({ message: "Relogin required !" });
             
-            }return res.status(401).json({message: error.name})
+            }return res.status(400).json({message: error.name})
         }
         
     }, 

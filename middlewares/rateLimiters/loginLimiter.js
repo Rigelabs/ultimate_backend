@@ -3,10 +3,8 @@ const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken');
 const Joi = require('joi');
 const {RateLimiterRedis,RateLimiterMemory} =require('rate-limiter-flexible');
-const redis =require('redis');
 const logger = require('../logger');
 const redisClient = require('../redis');
-const nanoid = require('nanoid/non-secure');
 
 
 const token_key = process.env.TOKEN_SECRET;
@@ -31,26 +29,22 @@ const maxConsecutiveFailsByUsernameAndIP = 10;
 const limiterSlowBruteByIP = new RateLimiterRedis({
     storeClient: redisRateLimiterClient,
     keyPrefix: 'login_fail_ip_per_day',
-    points: maxWrongAttemptsByIPperDay,
+    points: 10,
     duration: 60*10,
     blockDuration: 60 * 60 * 24, // Block for 1 day, if 100 wrong attempts per day
-    inmemoryBlockOnConsumed: 100, // If 100 points consumed
-    inmemoryBlockDuration: 30, // block for 30 seconds
-    insuranceLimiter: new RateLimiterMemory(
-        {
-          points: 20, // 20 is fair if you have 5 workers and 1 cluster
-          duration: 10,
-        }),
+    //inmemoryBlockOnConsumed: 100, // If 100 points consumed
+    //inmemoryBlockDuration: 30, // block for 30 seconds
+   
   });
   
   const limiterConsecutiveFailsByUsernameAndIP = new RateLimiterRedis({
     storeClient: redisRateLimiterClient,
     keyPrefix: 'login_fail_consecutive_username_and_ip',
-    points: maxConsecutiveFailsByUsernameAndIP,
+    points: 10,
     duration: 60*10, // Store number for 10mins since first fail
     blockDuration: 60*2, // Block for 1 minute after consecutive fails
-    inmemoryBlockOnConsumed: 200, // If 200 points consumed
-    inmemoryBlockDuration: 30, // block for 30 seconds
+    //inmemoryBlockOnConsumed: 200, // If 200 points consumed
+    //inmemoryBlockDuration: 30, // block for 30 seconds
     //insuranceLimiter: new RateLimiterMemory(
        // {
        //   points: 20, // 20 is fair if you have 5 workers and 1 cluster
@@ -74,7 +68,7 @@ async function loginLimiter(req,res,next){
     if(resSlowByIP !== null && resSlowByIP.consumedPoints > maxWrongAttemptsByIPperDay){
         retrySecs = Math.round(resSlowByIP.msBeforeNext / 1000) || 1;
     }
-    console.log(resSlowByIP)
+
     if(retrySecs >0){
        logger.error("I am Choking, too many requests",usernameIPKey)
         res.status(429).json({message:"I am Choking, too many requests"});
@@ -89,6 +83,7 @@ async function loginLimiter(req,res,next){
             }else{
                 //check if contact  exist in database
                  user =await Users.findOne({contact: req.body.contact});
+                 
                  if (!user){
                          res.status(400).json({message:"Account doesn't not exist"})
                     }else{
@@ -101,15 +96,18 @@ async function loginLimiter(req,res,next){
                             if(!validpass) return  res.status(400).json({message:"Invalid Credentials"});
     
                              //create and assign a token once logged in
-                             token =jwt.sign({_id:user._id,  role:user.role},token_key,{expiresIn:process.env.jwtExpiration})
+                         
+                             token =jwt.sign({_id:user._id,  role:user.role},token_key,{expiresIn:120})
                             
                          
-                             const refreshToken =jwt.sign({data:user_id},process.env.REFRESH_TOKEN_SECRET,
-                                {expiresIn:process.env.jwtRefreshExpiration});
+                             const refreshToken =jwt.sign({data:user._id},process.env.REFRESH_TOKEN_SECRET,
+                                {expiresIn:1440});
 
-                           await redisClient.get(user_id.toString(),(err,data)=>{
+                           await redisClient.get(user._id.toString(),(err,data)=>{
                                 if(err) throw err;
-                                redisClient.set(user_id.toString(),JSON.stringify({token:refreshToken}))
+                                if(!data){
+                                redisClient.set(user._id.toString(),JSON.stringify({token:refreshToken}));
+                                }
                             })
                              const userInfo={
                                 _id:user._id, 
@@ -156,8 +154,7 @@ async function loginLimiter(req,res,next){
                 await limiterConsecutiveFailsByUsernameAndIP.delete(usernameIPKey);
               }
         
-              res.end('authorized');
-              next();
+             
         }
     }
 }

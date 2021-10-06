@@ -18,12 +18,12 @@ redisClient.on("connect",()=>{
     console.log("Connected to Redis")
     logger.info("Connected to Redis")
   })
-redisClient.on("error",(err)=>{
-    logger.error("Redis Error: ", err)
+redisClient.on("error",(error)=>{
+    logger.error("Redis Error: ", error)
   })
-redisClient.on("end",(err)=>{
-    logger.error("Disconnected from Redis: ", err)
-    console.log("Disconnected from Redis: ", err)
+redisClient.on("end",(error)=>{
+    logger.error("Disconnected from Redis: ", error)
+    console.log("Disconnected from Redis: ", error)
   })
 
 module.exports=redisClient;

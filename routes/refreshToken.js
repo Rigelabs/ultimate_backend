@@ -1,12 +1,13 @@
 const express = require('express');
-const loginLimiter = require('../middlewares/rateLimiters/loginLimiter');
+const generalrateLimiterMiddleware = require('../middlewares/rateLimiters/genericLimiter');
+
 const { verifyRefreshToken } = require('../validators/verifytoken');
 
 
 
 const router= express.Router();
 
-router.post('/refresh',verifyRefreshToken,loginLimiter)
+router.post('/refresh',verifyRefreshToken)
 
 
 

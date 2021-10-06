@@ -7,7 +7,9 @@ const env =require('dotenv');
 const path = require('path');
 const logger = require('./middlewares/logger');
 const rfs =require("rotating-file-stream");
+const generalLimiter = require('./middlewares/rateLimiters/genericLimiter')
 
+const process =require('process');
 
 
 const app=express()
@@ -41,6 +43,7 @@ const serverLogStream =rfs.createStream("morganLogs.log",{
 
  app.use(morgan(':date[web] :status :method :url :remote-addr :remote-user :total-time :user-agent',{stream:serverLogStream}));
 
+ 
 const PORT =process.env.PORT || 5000
 
 app.listen(PORT,()=>{
@@ -48,12 +51,12 @@ app.listen(PORT,()=>{
     logger.info(`Server running in ${process.env.NODE_ENV} on port  ${PORT}`)
     })
 
-const loginRouter= require('./routes/login')
+
 const refreshRouter= require('./routes/refreshToken')
-const logoutRouter= require('./routes/logout')
-app.use('/api',loginRouter);
+const authRouter= require('./routes/auth')
+
 app.use('/api',refreshRouter);
-app.use('/api',logoutRouter);
+app.use('/api',authRouter);
 
 app.get('/', function (req, res) {
         res.send('hello, world!')
@@ -83,7 +86,7 @@ mongoose.connect(dbURL,{useNewUrlParser: true,useUnifiedTopology: true,useCreate
 
          }
          if(result){
-            console.log('connected to DB'),logger.info("Connected to DB")
+            console.log('Connected to DB'),logger.info("Connected to DB")
          }
 });
 mongoose.connection.on('disconnected',err=>{
@@ -98,4 +101,25 @@ mongoose.connection.on('error',err=>{
     console.log('DB Error',err),
     logger.error('DB Error',err)
 })
+
+//uncaughtException to crash the nodejs process
+process.on('unhandledRejection', (err, origin) => {
+    logger.error('Unhandled rejection at ', origin, `reason: ${err}`)
+    console.log('Unhandled rejection at ', origin, `reason: ${err}`)
     
+  })  
+//The 'rejectionHandled' event is emitted whenever a Promise has been rejected
+// and an error handler was attached to it (using promise.catch(), for example) later than one turn of the Node.js event loop.
+process.on('rejectionHandled', (err, origin) => {
+    logger.error('RejectionHandled at ', origin, `reason: ${err}`)
+    console.log('RejectionHandled at ', origin, `reason: ${err}`)
+  
+  })  
+//The 'exit' event is emitted when the Node.js process is about to exit as a result of either:
+  //The process.exit() method being called explicitly;
+  //The Node.js event loop no longer having any additional work to perform.
+process.on('exit', (err, origin) => {
+    logger.error('Process Exited !! ', origin, `reason: ${err}`)
+    console.log('Process Exited !! ', origin, `reason: ${err}`)
+
+  })  
