@@ -312,7 +312,7 @@ router.post('/users/logout', async (req, res) => {
         });
         
         //blacklist the access token
-        await redisClient.set("BL_" + user_id.toString(), token)
+        await redisClient.set("BL_" + user_id.toString(), 'token')
 
     } catch (error) {
         logger.error(`${error.status || 500} - ${res.statusMessage} - ${error.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
