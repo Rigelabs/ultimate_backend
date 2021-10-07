@@ -24,7 +24,7 @@ module.exports ={
             }
         } catch (error) {
             if (error.name==='TokenExpiredError') {
-                return res.status(401).send({ message: "Unauthorized! You need to Login Again !" });
+                return res.status(401).send({ message: "Your Session expired, You need to Login Again !" });
             
             }return res.status(401).json({message: error.name})
         }
@@ -45,7 +45,7 @@ module.exports ={
                            if(err) return logger.error("token not deleted", err)
                            
                        })
-                       return res.status(401).send({ message: "Refresh token Expired, You need to Login Again !" });
+                       return res.status(401).send({ message: "Your Session expired, You need to Login Again !" });
                    }}
                    if(decoded._id){
                    
