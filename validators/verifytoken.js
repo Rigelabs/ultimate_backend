@@ -30,36 +30,58 @@ module.exports ={
         }
         
     }, 
-    verifyRefreshToken: function(req,res,next){
+    verifyRefreshToken: async function(req,res,next){
       
         const refreshToken= req.body.refreshToken
-        console.log(refreshToken)
+        const user_id= req.body.user_id
         try {
-            if (refreshToken){
+            if (refreshToken && user_id){
             
-                const user = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET) 
-                req.user =user;
-                const user_id=req.user.data
-                
-                if(user){
+               jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET,async function(err,decoded){
+                    if(err){
+                    
+                    if (err.name==='TokenExpiredError') {
+                       await redisClient.del(user_id.toString(), (err,reply)=>{
+                           if(err) return logger.error("token not deleted", err)
+                           
+                       })
+                       return res.status(401).send({ message: "Refresh token Expired, You need to Login Again !" });
+                   }}
+                   if(decoded._id){
+                   
                     //verify if refreshtoken is on redis store
-                    redisClient.get(user_id, (err,data)=>{
-                        if(err){ logger.error(err); throw err};
-                        if(data ===null) return  res.status(401).json({message:"Invalid Request"});
-                        if(JSON.parse(data).token != refreshToken) return  res.status(401).json({message:"Invalid Request"});
-                        
+                   await redisClient.get(decoded._id.toString(), (err,data)=>{
+                        if(err){ logger.error(err)};
+                       
+                        if(data ===null) return  res.status(404).json({message:"No Token in store, Please Login again"});
+                        if(JSON.parse(data).refreshToken != refreshToken) return  res.status(401).json({message:"Invalid Request"});
+
+                        //create and assign a refresh token and access token
+
+                     const token = jwt.sign({ _id: decoded._id, role: decoded.role }, process.env.TOKEN_SECRET, { expiresIn: 120 })
+
+
+                     const newRefreshToken = jwt.sign({ _id: decoded._id,role: decoded.role }, process.env.REFRESH_TOKEN_SECRET,
+                            { expiresIn: '1d' });
+
+                 redisClient.set(decoded._id.toString(), JSON.stringify({ refreshToken: newRefreshToken }));
+                 res.header('token', token).json({ 'token': token, 'refreshToken': newRefreshToken});
                     })
-                     next();
-                }
+                   
+              }
+               })
+             
+                 
+           
+                
             }else{
-               return res.status(400).json({messgae:"Invalid Request"})
+               return res.status(401).json({message:"No Refresh token or User ID"})
             }
         } catch (error) {
-            if (error.name==='TokenExpiredError') {
-                return res.status(401).send({ message: "Relogin required !" });
-            
-            }return res.status(400).json({message: error.name})
-        }
+           
+            return res.status(400).json({message: error.message})      
+            }
+        
         
     }, 
         

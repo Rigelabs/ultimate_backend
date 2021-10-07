@@ -70,13 +70,13 @@ router.post('/users/create', uploads.single("avatar"), async (req, res) => {
 
         const usernameexist = await Users.findOne({ username: req.body.username });
         if (usernameexist) {
-            res.status(400).json({ message: "Username already exist" })
+          return  res.status(400).json({ message: "Username already exist" })
         }
         //check if contact already exist in database
 
         const contactexist = await Users.findOne({ contact: req.body.contact });
         if (contactexist) {
-            res.status(400).json({ message: `Contact ${req.body.contact} already exist` })
+           return res.status(400).json({ message: `Contact ${req.body.contact} already exist` })
         }
         //Hash the password
 
@@ -101,13 +101,13 @@ router.post('/users/create', uploads.single("avatar"), async (req, res) => {
         //try to save user 
 
         await user.save()
-        res.status(200).json({ message: "Account registered successfully, we are responding through the contact with more information" });
+        return res.status(200).json({ message: "Account registered successfully, we are responding through the contact with more information" });
 
 
 
     } catch (error) {
         logger.error(`${error.status || 500} - ${req.body.contact} - ${req.body.email} - ${error.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
-        res.status(400).json({ message: error.message })
+       return res.status(400).json({ message: error.message })
     }
 
 
@@ -166,15 +166,11 @@ router.post('/user/login', async (req, res) => {
                 const token = jwt.sign({ _id: user._id, role: user.role }, process.env.TOKEN_SECRET, { expiresIn: 120 })
 
 
-                const refreshToken = jwt.sign({ _id: user._id, role: user.role }, process.env.REFRESH_TOKEN_SECRET,
-                    { expiresIn: 1440 });
+                const refreshToken = jwt.sign({ _id: user._id,role: user.role }, process.env.REFRESH_TOKEN_SECRET,
+                    { expiresIn: '1d' });
 
-                await redisClient.get(user._id.toString(), (err, data) => {
-                    if (err) throw err;
-                    if (!data) {
-                        redisClient.set(user._id.toString(), JSON.stringify({ token: refreshToken }));
-                    }
-                })
+                await redisClient.set(user._id.toString(), JSON.stringify({ refreshToken: refreshToken }));
+                 
                 const userInfo = {
                     _id: user._id,
                     role: user.role,
@@ -303,11 +299,18 @@ router.get('/user/:id', ensureAuth, async (req, res) => {
 })
 
 
-router.get('/logout', ensureAuth, async (req, res) => {
+router.post('/users/logout', async (req, res) => {
     try {
         const user_id = req.body.user_id
+        
         //remove refresh token
-        await redisClient.del(user_id.toString());
+        await redisClient.del(user_id.toString(),(err,reply)=>{
+            if(err){
+               return res.status(400).json({message:err})
+            }
+            return res.status(200).json({message:"Logged out successfull"})
+        });
+        
         //blacklist the access token
         await redisClient.set("BL_" + user_id.toString(), token)
 
