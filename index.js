@@ -44,7 +44,7 @@ const serverLogStream =rfs.createStream("morganLogs.log",{
  app.use(morgan(':date[web] :status :method :url :remote-addr :remote-user :total-time :user-agent',{stream:serverLogStream}));
 
  
-const PORT =process.env.PORT || 5000
+const PORT =process.env.PORT || 8000
 
 app.listen(PORT,()=>{
     console.log(`Server running in ${process.env.NODE_ENV} on port  ${PORT}`),

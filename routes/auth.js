@@ -319,4 +319,5 @@ router.post('/users/logout', async (req, res) => {
     }
 
 })
+
 module.exports = router;

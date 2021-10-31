@@ -4,7 +4,7 @@ const redisClient = require('../middlewares/redis');
 
 module.exports ={
     ensureAuth: function(req,res,next){
-      
+      console.log(req.headers)
         const authHeader= req.headers['authorization'];
         try {
             if (authHeader){
@@ -16,7 +16,7 @@ module.exports ={
                 req.user =user;
               
                 if(user){
-                     next();
+                    return(res.status(200).json(user));
                 }
             }else{
                 logger.error(`Invalid request ${req.originalUrl} - ${req.method} - ${req.ip}`);
