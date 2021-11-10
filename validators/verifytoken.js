@@ -4,7 +4,7 @@ const redisClient = require('../middlewares/redis');
 
 module.exports ={
     ensureAuth: function(req,res,next){
-      console.log(req.headers)
+      
         const authHeader= req.headers['authorization'];
         try {
             if (authHeader){

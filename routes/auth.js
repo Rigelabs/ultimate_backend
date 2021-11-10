@@ -126,11 +126,12 @@ const opts = {
 const rateLimiter = new RateLimiterRedis(opts);
 
 router.post('/user/login', async (req, res) => {
-
-    const { bodyError, value } = await loginschema.validateAsync(req.body);
+console.log(req.body)
+    
     try {
+        const { bodyError, value } = await loginschema.validateAsync(req.body);
         if (bodyError) {
-            res.status(400).json({ message: bodyError });
+           return res.status(400).json({ message: bodyError });
         } else {
             //check if contact  exist in database
             const user = await Users.findOne({ contact: req.body.contact });
