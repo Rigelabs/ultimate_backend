@@ -12,6 +12,7 @@ const logger = require("../middlewares/logger");
 const generalrateLimiterMiddleware = require("../middlewares/rateLimiters/genericLimiter");
 const jwt = require('jsonwebtoken');
 const { RateLimiterRedis } = require('rate-limiter-flexible');
+const twilioSMS = require("../middlewares/twilioSMS");
 
 const router = express.Router();
 
@@ -19,13 +20,13 @@ env.config();
 
 const schema = Joi.object({
 
-    username: Joi.string().required().alphanum().max(10),
-    email: Joi.string().required().email({ minDomainSegments: 2, tlds: { allow: ['com', 'net'] } }),
+    first_name: Joi.string().required().max(20).min(3).regex(/^[A-Za-z]+$/).error(new Error("Invalid First Name")),
+    last_name: Joi.string().required().max(20).min(3).regex(/^[A-Za-z]+$/).error(new Error("Invalid Last Name")),
     password: Joi.string().required().regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{3,10}$/).
         error(new Error('Password requirement: Minimum 3 and maximum 10 characters, at least one uppercase letter,one lowercase letter, one number')),
     confirmPassword: Joi.any().equal(Joi.ref('password')).required().
         messages({ 'any.only': 'passwords does not match' }),
-    contact: Joi.string().max(14).min(13).error(new Error('Invalid Phone number')),
+    contact: Joi.string().required().min(13).max(14).error(new Error("Invalid Phone Number")),
 
     avatar: Joi.string()
 });
@@ -35,7 +36,7 @@ const loginschema = Joi.object({
     password: Joi.string().required()
 });
 
-const nanoid = customAlphabet('1234567890abcdef', 6)
+const nanoid = customAlphabet('1234567890', 6)
 const storage = multer.diskStorage({
 
     filename: function (req, file, cb) {
@@ -58,20 +59,7 @@ router.post('/users/create', uploads.single("avatar"), async (req, res) => {
     //validate data before adding a user
     try {
         const bodyerror = await schema.validateAsync(req.body);
-
-        //check if email already exist in database
-
-        const emailExist = await Users.findOne({ email: req.body.email });
-        if (emailExist) {
-            return res.status(400).json({ message: "Email already exist" });
-        }
-
-        //check if username already exist in database
-
-        const usernameexist = await Users.findOne({ username: req.body.username });
-        if (usernameexist) {
-          return  res.status(400).json({ message: "Username already exist" })
-        }
+    
         //check if contact already exist in database
 
         const contactexist = await Users.findOne({ contact: req.body.contact });
@@ -84,24 +72,26 @@ router.post('/users/create', uploads.single("avatar"), async (req, res) => {
         var hashedPassword = await bcrypt.hash(req.body.password, salt);
 
         //uploading image to cloudinary
-
         const file = req.file
 
-        const result = await cloudinary.uploader.upload(file.path);
+        let result
+        if (file) {
+            result = await cloudinary.uploader.upload(file.path)
+        };
         //create new user object after validation and hashing
 
         const user = new Users({
-            email: req.body.email,
-            username: req.body.username,
+            first_name: req.body.first_name,
+            last_name: req.body.last_name,
             password: hashedPassword,
             contact: req.body.contact,
-            avatar: result.secure_url,
-            cloudinary_id: result.public_id
+            avatar: result ? result.secure_url : null,
+            cloudinary_id: result ? result.public_id : null
         });
         //try to save user 
 
         await user.save()
-        return res.status(200).json({ message: "Account registered successfully, we are responding through the contact with more information" });
+        return res.status(200).json({ message: "Account registered successfully, Please proceed to login" });
 
 
 
@@ -120,13 +110,13 @@ const opts = {
     redis: redisClient,
     points: 5, // 5 points
     duration: 15 * 60, // Per 15 minutes
-    blockDuration: 15 * 60, // block for 15 minutes if more than points consumed 
+    blockDuration: 5 * 60, // block for 5 minutes if more than points consumed 
   };
   
 const rateLimiter = new RateLimiterRedis(opts);
 
 router.post('/user/login', async (req, res) => {
-console.log(req.body)
+
     
     try {
         const { bodyError, value } = await loginschema.validateAsync(req.body);
@@ -157,7 +147,7 @@ console.log(req.body)
                             // Blocked
                             const secBeforeNext = Math.ceil(rejRes.msBeforeNext / 60000) || 1;
                             logger.error(`LoggingIn alert: Contact: ${req.body.contact} on IP: ${req.socket.remoteAddress} is Chocking Me !!`)
-                           return res.status(429).send(`Too Many Requests, Retry-After ${String(secBeforeNext)} Minutes`);
+                           return res.status(429).json({message:`Too Many Trials, Retry-After ${String(secBeforeNext)} Minutes`});
                         });
                    
                 }else{
@@ -175,7 +165,8 @@ console.log(req.body)
                 const userInfo = {
                     _id: user._id,
                     role: user.role,
-                    username: user.role,
+                    first_name: user.first_name,
+                    last_name: user.last_name,
                     contact: user.contact,
                     avatar: user.avatar
                 }
@@ -238,8 +229,8 @@ function createUsers(users) {
         usersList.push({
             _id: i._id,
             contact: i.contact,
-            email: i.email,
-            username: i.username,
+            first_name: i.first_name,
+            last_name: i.last_name,
             avatar: i.avatar,
             role: i.role
 
@@ -287,18 +278,151 @@ router.get('/users/all', generalrateLimiterMiddleware, ensureAuth, async (req, r
 
 
 //get a user
-router.get('/user/:id', ensureAuth, async (req, res) => {
+router.get('/user/:user_id', ensureAuth, async (req, res) => {
+   
     try {
-        const user = await Users.findById(req.params.id).select('-password') //will disregard return of password.
-        return res.status(200).json({ user })
+        await redisClient.get(`${req.params.user_id}userData`,(err,reply)=>{
+            if(err || reply.data ==null){
+                Users.findById(req.params.user_id).select('-password').then(data=>{
+                    redisClient.set(`${req.params.user_id}userData`,JSON.stringify(data))
+                    return res.status(200).json({ data })
+                }) //will disregard return of password.
+                
+            }
+            return res.status(200).json(JSON.parse(data))
+
+        })
+       
 
     } catch (error) {
+        res.status(400).json({message: error.message})
         logger.error(`${error.status || 500} - ${res.statusMessage} - ${error.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
     }
 
 
 })
 
+router.post('/user/requestCode',async(req,res)=>{
+
+    try { 
+            if(req.body.phoneNumber || req.body.phoneNumber.length ===13){
+               
+                //check if contact  exist in database
+                const user =await Users.findOne({ contact: req.body.phoneNumber });
+
+                if (!user) {
+                    res.status(400).json({ message: "Account doesn't not exist" })
+                } else {
+                    //send otp and save in the redis db
+                    const otp_code = nanoid();
+                    const redisField=`${user.contact}OTP`
+                   await redisClient.set(redisField.toString(),otp_code.toString(),"EX",180,(err,result)=>{
+                      
+                            if(err){
+                                return res.status(400).json({ message: err })
+                            }
+                            twilioSMS(`Hello ${user.first_name}, your verification code is: ${otp_code}. Expires in 3 Minutes`, user.contact).then(reply=>{
+                            return res.status(200).json(`Hello ${user.first_name}, your verification code is: ${otp_code}. Expires in 3 Minutes`,)
+                        }).catch(e=>{return res.status(400).json({message:e})})
+                        
+                    })
+                    
+                }
+            }else{
+                res.status(400).json({message: "Invalid Phone number"})
+            }
+    } catch (error) {
+        res.status(400).json({message: error.message})
+        logger.error(`${error.status || 500} - ${res.statusMessage} - ${error.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
+        
+    }
+})
+
+
+//verify otpcode and change password
+router.post("/user/changePassword", async (req, res) => {
+    const otpCode = req.body.otp_code
+    const contact = req.body.contact
+    const password= req.body.password
+ 
+    try {
+        if (otpCode && contact && password) {
+            await Users.findOne({ contact: contact }).then(user=>{
+                if (!user) {
+               
+                } else {
+                    const string=`${contact}OTP`
+                    
+                    //compare code in redis with the ones sent
+                     redisClient.get(string.toString(), (err, redisData) => {
+                        if (err) { return logger.error(err) };
+                        
+                        if (redisData === null || redisData != otpCode) {
+                            // Consume 1 point for each failed login attempt
+                            rateLimiter.consume(req.socket.remoteAddress)
+                                .then((data) => {
+                                    // Message to user
+                                    return res.status(400).json({ message: `Invalid Code, you have ${data.remainingPoints} attempts left, Please Request another Code` });
+                                })
+                                .catch((rejRes) => {
+                                    // Blocked
+                                    const secBeforeNext = Math.ceil(rejRes.msBeforeNext / 60000) || 1;
+                                    logger.error(`LoggingIn alert: Contact: ${req.body.contact} on IP: ${req.socket.remoteAddress} is Chocking Me !!`)
+                                    return res.status(429).send(`Too Many Requests, Try to Login After ${String(secBeforeNext)} Minutes`);
+                                });
+    
+    
+                        } else {
+                            //change password
+                             //Hash the password
+
+                        const salt =  bcrypt.genSaltSync(10);
+                        var hashedPassword =  bcrypt.hashSync(req.body.password, salt);
+                            
+                            user.password = hashedPassword
+                            user.save().then(saved=>{
+                                //create and assign a token once code is verified
+    
+                            const token = jwt.sign({ _id: user._id, role: user.role }, process.env.TOKEN_SECRET, { expiresIn: 120 })
+    
+    
+                            const refreshToken = jwt.sign({ _id: user._id, role: user.role }, process.env.REFRESH_TOKEN_SECRET,
+                                { expiresIn: '1d' });
+    
+                            redisClient.set(user._id.toString(), JSON.stringify({ refreshToken: refreshToken }));
+                            //delete otp code from redis
+                            redisClient.del(string)
+                            const userInfo = {
+                                _id: user._id,
+                                first_name: user.first_name,
+                                last_name: user.last_name,
+                                contact: user.contact,
+                                avatar: user.avatar
+                            }
+                           return( res.header('token', token).json({ 'token': token, 'refreshToken': refreshToken, 'user': userInfo,"message":"Password Changed Successfully"}));
+                            }).catch(err=>{
+                               return  res.status(401).json({ message: "Password Change Failed" })
+                            })
+                            
+                        }
+                    })
+    
+                }
+            }).catch(err=>{
+                res.status(400).json({ message: "Account doesn't not exist" })
+            })
+
+            
+        } else {
+            return res.status(400).json({ message: "Invalid request, Login again to get another code" })
+        }
+    } catch (error) {
+        return res.status(500).json({ message: error.message })
+    }
+
+
+
+})
 
 router.post('/users/logout', async (req, res) => {
     try {

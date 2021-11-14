@@ -6,6 +6,7 @@ module.exports ={
     ensureAuth: function(req,res,next){
       
         const authHeader= req.headers['authorization'];
+        
         try {
             if (authHeader){
                 const bearer=authHeader.split(' ');
@@ -31,8 +32,8 @@ module.exports ={
         
     }, 
     verifyRefreshToken: async function(req,res,next){
-      
-        const refreshToken= req.body.refreshToken
+
+        const refreshToken= req.body.token
         const user_id= req.body.user_id
         try {
             if (refreshToken && user_id){
@@ -51,9 +52,10 @@ module.exports ={
                    
                     //verify if refreshtoken is on redis store
                    await redisClient.get(decoded._id.toString(), (err,data)=>{
-                        if(err){ logger.error(err)};
+                        if(err){ return (res.status(500).json({message:err}),logger.error(err))};
                        
                         if(data ===null) return  res.status(404).json({message:"No Token in store, Please Login again"});
+
                         if(JSON.parse(data).refreshToken != refreshToken) return  res.status(401).json({message:"Invalid Request"});
 
                         //create and assign a refresh token and access token
