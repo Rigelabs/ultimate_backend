@@ -32,8 +32,8 @@ module.exports ={
         
     }, 
     verifyRefreshToken: async function(req,res,next){
-
-        const refreshToken= req.body.token
+        
+        const refreshToken= req.body.refreshToken
         const user_id= req.body.user_id
         try {
             if (refreshToken && user_id){
